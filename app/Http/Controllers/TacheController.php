@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Tache;
+use App\Utils\CustomResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Throwable;
@@ -14,12 +15,46 @@ class TacheController extends Controller
      */
     public function index()
     {
-        $taches = Tache::paginate(4);
+        $taches = Tache::paginate(10);
         $taches->makeHidden(['created_at', 'updated_at']);
-        return response()->json([
-            'error' => false,
-            'taches' => $taches
-        ], 200);
+        return CustomResponse::success($taches);
+    }
+
+    /**
+     * Display current user's taches.
+     */
+    public function myTaches() {
+        $taches = auth()->user()->taches()->paginate(10);
+        $taches->makeHidden(['created_at', 'updated_at']);
+        return CustomResponse::success($taches);
+    }
+
+    /**
+     * Store multiple resources in storage.
+     */
+    public function storeMultiple(Request $request)
+    {
+        $validators = validator($request->all(), [
+            'taches' => 'required|array',
+            'taches.*.nom' => 'required|string',
+            'taches.*.description' => 'nullable|string',
+            'taches.*.priorite' => 'nullable|integer|min:1|max:3',
+            'taches.*.date_limite' => 'nullable|date|after:now',
+        ]);
+        if ($validators->fails()) {
+            return CustomResponse::validationError($validators);
+        }
+        $taches = [];
+        try {
+            foreach ($request->taches as $tache) {
+                $tache = new Tache($tache);
+                $tache->saveOrFail();
+                $taches[] = $tache;
+            }
+        } catch (Throwable $th) {
+            return CustomResponse::catchException($th);
+        }
+        return CustomResponse::success($taches, 'Tâches créées avec succès', 201);
     }
 
     /**
@@ -34,11 +69,7 @@ class TacheController extends Controller
             'date_limite' => 'nullable|date|after:now',
         ]);
         if ($validators->fails()) {
-            return response()->json([
-                'error' => true,
-                'validation' => true,
-                'errors' => $validators->errors()
-            ], 400);
+            return CustomResponse::validationError($validators);
         }
         $tache = new Tache($request->only([
             'nom',
@@ -46,22 +77,12 @@ class TacheController extends Controller
             'priorite',
             'date_limite',
         ]));
-        $tache->uid = Str::uuid();
         try {
             $tache->saveOrFail();
         } catch (Throwable $th) {
-            return response()->json([
-                'error' => true,
-                'validation' => false,
-                'message' => $th->getMessage()
-            ], 500);
+            return CustomResponse::catchException($th);
         }
-        return response()->json([
-            'error' => false,
-            'validation' => false,
-            'message' => 'Tâche créée avec succès',
-            'tache' => $tache
-        ], 201);
+        return CustomResponse::success($tache, 'Tâche créée avec succès', 201);
     }
 
     /**
@@ -69,10 +90,8 @@ class TacheController extends Controller
      */
     public function show(Tache $tache)
     {
-        return response()->json([
-            'error' => false,
-            'tache' => $tache
-        ], 200);
+        $tache->load('user');
+        return CustomResponse::success($tache);
     }
 
     /**
@@ -87,11 +106,7 @@ class TacheController extends Controller
             'date_limite' => 'date',
         ]);
         if ($validators->fails()) {
-            return response()->json([
-                'error' => true,
-                'validation' => true,
-                'errors' => $validators->errors()
-            ], 400);
+            return CustomResponse::validationError($validators);
         }
         try {
             $tache->update($request->only([
@@ -101,53 +116,39 @@ class TacheController extends Controller
                 'date_limite',
             ]));
         } catch (Throwable $th) {
-            return response()->json([
-                'error' => true,
-                'validation' => false,
-                'message' => $th->getMessage()
-            ], 500);
+            return CustomResponse::catchException($th);
         }
-        return response()->json([
-            'error' => false,
-            'validation' => false,
-            'message' => 'Tâche modifiée avec succès',
-            'tache' => $tache
-        ], 200);
+        return CustomResponse::success($tache, 'Tâche modifiée avec succès');
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Tache $tache)
+    public function destroy($uid)
     {
+        $tache = Tache::where('uid', $uid)->first();
+        if (!$tache) {
+            return CustomResponse::error('Tâche introuvable', 404);
+        }
         try {
             $tache->delete();
         } catch (Throwable $th) {
-            return response()->json([
-                'error' => true,
-                'message' => $th->getMessage()
-            ], 500);
+            return CustomResponse::catchException($th);
         }
-        return response()->json([
-            'error' => false,
-            'message' => 'Tâche supprimée avec succès',
-        ], 200);
+        return CustomResponse::success(null, 'Tâche supprimée avec succès');
     }
 
-    public function terminer(Tache $tache)
+    public function terminer($uid)
     {
+        $tache = Tache::where('uid', $uid)->first();
+        if (!$tache) {
+            return CustomResponse::error('Tâche introuvable', 404);
+        }
         if ($tache->terminee) {
-            return response()->json([
-                'error' => true,
-                'message' => 'On ne peut pas terminer une tâche déjà terminée',
-            ], 400);
+            return CustomResponse::error('Impossible de terminer une tâche déjà terminée !', 400);
         }
         $tache->terminee = true;
         $tache->save();
-        return response()->json([
-            'error' => false,
-            'message' => 'Tâche terminée avec succès',
-            'tache' => $tache
-        ], 200);
+        return CustomResponse::success($tache, 'Tâche terminée avec succès');
     }
 }

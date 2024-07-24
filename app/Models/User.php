@@ -4,12 +4,14 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, HasApiTokens;
 
     /**
      * The attributes that are mass assignable.
@@ -30,6 +32,10 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'email_verified_at',
+        'created_at',
+        'updated_at',
+        'id'
     ];
 
     /**
@@ -43,5 +49,13 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Get the taches for the user.
+     */
+    public function taches(): HasMany
+    {
+        return $this->hasMany(Tache::class);
     }
 }
